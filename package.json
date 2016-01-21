@@ -1,51 +1,39 @@
 {
-  "name": "git-utils",
-  "description": "A package for using Git repositories",
-  "version": "4.1.0",
+  "name": "git-native",
+  "description": "A libgit2 binding for nodejs",
+  "version": "0.0.1alpha",
   "license": "MIT",
-  "author": {
-    "name": "Kevin Sawicki",
-    "email": "kevin@github.com"
-  },
-  "contributors": [
-    {
-      "name": "Garen J. Torikian",
-      "email": "gjtorikian@gmail.com"
-    }
-  ],
+  "author": "IdeaHunter <admin@fckn.me>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atom/git-utils.git"
+    "url": "git+https://github.com/IdeaHunter/git-native.git"
   },
   "bugs": {
-    "url": "https://github.com/atom/git-utils/issues"
+    "url": "https://github.com/IdeaHunter/git-native"
   },
-  "homepage": "http://atom.github.io/git-utils",
+  "homepage": "https://github.com/IdeaHunter/git-native",
   "keywords": [
     "git",
-    "libgit2",
-    "dvcs",
-    "vcs"
+    "libgit2"
   ],
   "main": "./lib/git.js",
   "devDependencies": {
-    "grunt": "~0.4.0",
-    "grunt-contrib-coffee": "~0.9.0",
-    "grunt-shell": "~0.2.1",
-    "grunt-cli": "~0.1.6",
     "wrench": "~1.4.4",
     "temp": "~0.5.0",
     "underscore": "~1.5.2",
     "jasmine-focused": "^1.0.4",
-    "node-cpplint": "~0.1.5",
-    "grunt-coffeelint": "0.0.6"
+    "node-cpplint": "~0.1.5"
   },
   "dependencies": {
-    "nan": "^2.0.0",
-    "fs-plus": "^2.1.0"
+    "eslint": "^1.10.3",
+    "fs-plus": "^2.1.0",
+    "gulp": "^3.9.0",
+    "gulp-eslint": "^1.1.1",
+    "gulp-if": "^2.0.0",
+    "nan": "^2.0.0"
   },
   "scripts": {
-    "prepublish": "grunt clean coffee lint",
-    "test": "grunt test"
-  }
+    "install": "node-gyp rebuild"
+  },
+  "gypfile": true
 }
