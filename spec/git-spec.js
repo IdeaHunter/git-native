@@ -5,7 +5,7 @@ let _ = require('underscore');
 let exec = require('fs-plus');
 let execCommands;
 let fs = require('fs-plus');
-let git = require('../lib/git');
+let git = require('../src/git');
 let path = require('path');
 let temp = require('temp');
 let wrench = require('wrench');

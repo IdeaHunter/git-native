@@ -3,9 +3,11 @@
 let gulp = require('gulp');
 let eslint = require('gulp-eslint');
 let gulpIf = require('gulp-if');
+let jasmine = require('gulp-jasmine');
 
 let config = {
-    eslint: [ '**/*.js', '!node_modules/**' ]
+    eslint: [ '**/*.js', '!node_modules/**' ],
+    tests: [ '**/*-spec.js' ]
 };
 
 function isFixed(file) {
@@ -23,4 +25,9 @@ gulp.task('lint-fix', function () {
         .pipe(eslint({ fix: true }))
         .pipe(eslint.format())
         .pipe(gulpIf(isFixed, gulp.dest('./')));
+});
+
+gulp.task('test', function () {
+    return gulp.src(config.tests)
+        .pipe(jasmine());
 });

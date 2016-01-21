@@ -18,11 +18,12 @@
   ],
   "main": "./lib/git.js",
   "devDependencies": {
-    "wrench": "~1.4.4",
+    "gulp-jasmine": "^2.2.1",
+    "jasmine-focused": "^1.0.4",
+    "node-cpplint": "~0.1.5",
     "temp": "~0.5.0",
     "underscore": "~1.5.2",
-    "jasmine-focused": "^1.0.4",
-    "node-cpplint": "~0.1.5"
+    "wrench": "~1.4.4"
   },
   "dependencies": {
     "eslint": "^1.10.3",
@@ -33,6 +34,7 @@
     "nan": "^2.0.0"
   },
   "scripts": {
+    "test": "gulp test",
     "install": "node-gyp rebuild"
   },
   "gypfile": true

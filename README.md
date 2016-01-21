@@ -1,4 +1,4 @@
-# Git Node module [![Build Status](https://travis-ci.org/atom/git-utils.svg?branch=master)](https://travis-ci.org/atom/git-utils)
+# Git Node module
 
 Helpers for working with Git repositories built natively on top of
 [libgit2](http://libgit2.github.com).
@@ -6,15 +6,14 @@ Helpers for working with Git repositories built natively on top of
 ## Installing
 
 ```sh
-npm install git-utils
+npm install git-native
 ```
 
 ## Building
   * Clone the repository with the `--recurse` option to get the libgit2
     submodule
   * Run `npm install`
-  * Run `grunt` to compile the native and CoffeeScript code
-  * Run `grunt test` to run the specs
+  * Run `gulp test` to run the specs
 
 ## Docs
 
@@ -24,7 +23,7 @@ Open the repository at the given path.  This will return `null` if the
 repository at the given path does not exist or cannot be opened.
 
 ```coffeescript
-git = require 'git-utils'
+git = require 'git-native'
 
 repository = git.open('/Users/me/repos/node')
 ```
