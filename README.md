@@ -1,4 +1,4 @@
-# Git Node module
+# Git Node module [![Build Status](https://travis-ci.org/IdeaHunter/git-native.svg?branch=master)](https://travis-ci.org/IdeaHunter/git-native)
 
 Helpers for working with Git repositories built natively on top of
 [libgit2](http://libgit2.github.com).
