@@ -8,8 +8,11 @@
       ],
       'include_dirs': [ '<!(node -e "require(\'nan\')")' ],
       'sources': [
-        'src/repository.cc'
+        'src/repository.cc',
+        'src/git-worker.cc'
       ],
+      'cflags': ['-fexceptions'],
+      'cflags_cc': ['-fexceptions'],
       'conditions': [
         ['OS=="win"', {
           'msvs_disabled_warnings': [

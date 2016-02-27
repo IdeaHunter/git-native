@@ -16,11 +16,12 @@
     "git",
     "libgit2"
   ],
-  "main": "./lib/git.js",
+  "main": "./build/Release/git.node",
   "devDependencies": {
+    "bindings": "^1.2.1",
     "gulp-jasmine": "^2.2.1",
     "jasmine-focused": "^1.0.4",
-    "node-cpplint": "~0.1.5",
+    "node-cpplint": "^0.1.5",
     "temp": "~0.5.0",
     "underscore": "~1.5.2",
     "wrench": "~1.4.4"
@@ -31,7 +32,8 @@
     "gulp": "^3.9.0",
     "gulp-eslint": "^1.1.1",
     "gulp-if": "^2.0.0",
-    "nan": "^2.0.0"
+    "nan": "^2.0.0",
+    "node-notifier": "^4.5.0"
   },
   "scripts": {
     "test": "gulp test",

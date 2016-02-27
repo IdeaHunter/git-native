@@ -19,14 +19,17 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#include "repository.h"
-
 #include <string.h>
-
-#include <map>
 #include <utility>
+#include <map>
 
-void Repository::Init(Local<Object> target) {
+#include "./repository.h"
+#include "./git-worker.h"
+
+
+Nan::Persistent<v8::Function> Repository::constructor;
+
+void Repository::Init(Local<Object> exports) {
   Nan::HandleScope scope;
   git_libgit2_init();
 
@@ -36,8 +39,10 @@ void Repository::Init(Local<Object> target) {
   newTemplate->InstanceTemplate()->SetInternalFieldCount(1);
 
   Local<ObjectTemplate> proto = newTemplate->PrototypeTemplate();
+  Nan::SetMethod(newTemplate, "open", Repository::Open);
+
   Nan::SetMethod(proto, "getPath", Repository::GetPath);
-  Nan::SetMethod(proto, "_getWorkingDirectory",
+  Nan::SetMethod(proto, "getWorkingDirectory",
                   Repository::GetWorkingDirectory);
   Nan::SetMethod(proto, "exists", Repository::Exists);
   Nan::SetMethod(proto, "getSubmodulePaths", Repository::GetSubmodulePaths);
@@ -61,14 +66,43 @@ void Repository::Init(Local<Object> target) {
   Nan::SetMethod(proto, "getLineDiffs", Repository::GetLineDiffs);
   Nan::SetMethod(proto, "getLineDiffDetails", Repository::GetLineDiffDetails);
   Nan::SetMethod(proto, "getReferences", Repository::GetReferences);
-  Nan::SetMethod(proto, "checkoutRef", Repository::CheckoutReference);
+  Nan::SetMethod(proto, "checkoutReference", Repository::CheckoutReference);
   Nan::SetMethod(proto, "add", Repository::Add);
 
-  target->Set(Nan::New<String>("Repository").ToLocalChecked(),
-                                newTemplate->GetFunction());
+  exports->Set(Nan::New<String>("open").ToLocalChecked(),
+    Nan::New<FunctionTemplate>(Repository::Open)->GetFunction());
+  constructor.Reset(newTemplate->GetFunction());
 }
 
-NODE_MODULE(git, Repository::Init)
+NODE_MODULE(git, Repository::Init);
+
+NAN_METHOD(Repository::Open) {
+  std::string repositoryPath(*String::Utf8Value(info[0]));
+  Work<void> res = [repositoryPath](void **val) {
+    git_repository* repository;
+    if (git_repository_open_ext(
+        &repository, repositoryPath.c_str(), 0, NULL) != GIT_OK)
+      return false;
+      *val = repository;
+
+    return true;
+  };
+
+  ToResult<void> createResult = [](void *res) {
+    auto cons = Nan::New(Repository::constructor);
+    auto instance = Nan::NewInstance(cons, 0, {}).ToLocalChecked();
+    auto obj = ObjectWrap::Unwrap<Repository>(instance);
+    obj->repository = static_cast<git_repository*>(res);
+
+    return instance;
+  };
+  RunAsync(
+    createResult,
+    &info,
+    res,
+    GITERR_REPOSITORY,
+    "Could not open repository");
+}
 
 NAN_METHOD(Repository::New) {
   Nan::HandleScope scope;
@@ -884,6 +918,14 @@ NAN_METHOD(Repository::CheckoutReference) {
     shouldCreateNewRef = false;
 
   std::string strRefName(*String::Utf8Value(info[0]));
+  std::string suffix;
+  std::string prefix = "refs/heads/";
+  if (strRefName.find(prefix) == 0) {
+    suffix = strRefName.substr(prefix.size());
+  } else {
+    suffix = strRefName;
+    strRefName = prefix.append(strRefName);
+  }
   const char* refName = strRefName.c_str();
 
   git_repository* repo = GetRepository(info);
@@ -904,12 +946,12 @@ NAN_METHOD(Repository::CheckoutReference) {
       return info.GetReturnValue().Set(Nan::New<Boolean>(false));
 
     git_reference* branch;
+
     // N.B.: git_branch_create needs a name like 'xxx', not 'refs/heads/xxx'
-    const int kShortNameLength = strRefName.length() - 11;
-    std::string shortRefName(strRefName.c_str() + 11, kShortNameLength);
 
     int branchCreateStatus = git_branch_create(
-        &branch, repo, shortRefName.c_str(), commit, 0);
+        &branch, repo, suffix.c_str(), commit, 0);
+
     git_commit_free(commit);
 
     if (branchCreateStatus != GIT_OK)

@@ -22,71 +22,81 @@
 #ifndef SRC_REPOSITORY_H_
 #define SRC_REPOSITORY_H_
 
+#include <nan.h>
+
 #include <string>
 #include <vector>
+#include <functional>
 
-#include "git2.h"
-#include "nan.h"
+#include "./git2.h"
+
 using namespace v8;  // NOLINT
 
 class Repository : public Nan::ObjectWrap {
  public:
-  static void Init(Local<Object> target);
+    static void Init(Local<Object> target);
+    git_repository* repository;
 
  private:
-  static NAN_METHOD(New);
-  static NAN_METHOD(GetPath);
-  static NAN_METHOD(GetWorkingDirectory);
-  static NAN_METHOD(GetSubmodulePaths);
-  static NAN_METHOD(Exists);
-  static NAN_METHOD(GetHead);
-  static NAN_METHOD(RefreshIndex);
-  static NAN_METHOD(IsIgnored);
-  static NAN_METHOD(IsSubmodule);
-  static NAN_METHOD(GetConfigValue);
-  static NAN_METHOD(SetConfigValue);
-  static NAN_METHOD(GetStatus);
-  static NAN_METHOD(GetStatusForPaths);
-  static NAN_METHOD(CheckoutHead);
-  static NAN_METHOD(GetReferenceTarget);
-  static NAN_METHOD(GetDiffStats);
-  static NAN_METHOD(GetIndexBlob);
-  static NAN_METHOD(GetHeadBlob);
-  static NAN_METHOD(GetCommitCount);
-  static NAN_METHOD(GetMergeBase);
-  static NAN_METHOD(Release);
-  static NAN_METHOD(GetLineDiffs);
-  static NAN_METHOD(GetLineDiffDetails);
-  static NAN_METHOD(GetReferences);
-  static NAN_METHOD(CheckoutReference);
-  static NAN_METHOD(Add);
+    static NAN_METHOD(Open);
+    static NAN_METHOD(New);
+    static NAN_METHOD(GetPath);
+    static NAN_METHOD(GetWorkingDirectory);
+    static NAN_METHOD(GetSubmodulePaths);
+    static NAN_METHOD(Exists);
+    static NAN_METHOD(GetHead);
+    static NAN_METHOD(RefreshIndex);
+    static NAN_METHOD(IsIgnored);
+    static NAN_METHOD(IsSubmodule);
+    static NAN_METHOD(GetConfigValue);
+    static NAN_METHOD(SetConfigValue);
+    static NAN_METHOD(GetStatus);
+    static NAN_METHOD(GetStatusForPaths);
+    static NAN_METHOD(CheckoutHead);
+    static NAN_METHOD(GetReferenceTarget);
+    static NAN_METHOD(GetDiffStats);
+    static NAN_METHOD(GetIndexBlob);
+    static NAN_METHOD(GetHeadBlob);
+    static NAN_METHOD(GetCommitCount);
+    static NAN_METHOD(GetMergeBase);
+    static NAN_METHOD(Release);
+    static NAN_METHOD(GetLineDiffs);
+    static NAN_METHOD(GetLineDiffDetails);
+    static NAN_METHOD(GetReferences);
+    static NAN_METHOD(CheckoutReference);
+    static NAN_METHOD(Add);
 
-  static int StatusCallback(const char *path, unsigned int status,
-                            void *payload);
-  static int DiffHunkCallback(const git_diff_delta *delta,
-                              const git_diff_hunk *hunk,
-                              void *payload);
-  static int DiffLineCallback(const git_diff_delta *delta,
-                              const git_diff_hunk *hunk,
-                              const git_diff_line *line,
-                              void *payload);
-  static int SubmoduleCallback(git_submodule *submodule, const char *name,
-                               void *payload);
+    static Nan::Persistent<v8::Function> constructor;
 
-  static Local<Value> ConvertStringVectorToV8Array(
-      const std::vector<std::string>& vector);
+    static int StatusCallback(const char *path, unsigned int status,
+                                                        void *payload);
+    static int DiffHunkCallback(
+        const git_diff_delta *delta,
+        const git_diff_hunk *hunk,
+        void *payload);
 
-  static git_repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
+    static int DiffLineCallback(
+        const git_diff_delta *delta,
+        const git_diff_hunk *hunk,
+        const git_diff_line *line,
+        void *payload);
 
-  static int GetBlob(Nan::NAN_METHOD_ARGS_TYPE args,
-                      git_repository* repo, git_blob*& blob);
+    static int SubmoduleCallback(git_submodule *submodule, const char *name,
+                                                             void *payload);
 
-  static git_diff_options CreateDefaultGitDiffOptions();
+    static Local<Value> ConvertStringVectorToV8Array(
+            const std::vector<std::string>& vector);
 
-  explicit Repository(Local<String> path);
-  ~Repository();
+    static git_repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
 
-  git_repository* repository;
+    static int GetBlob(
+        Nan::NAN_METHOD_ARGS_TYPE args,
+        git_repository* repo, git_blob*& blob);
+
+    static git_diff_options CreateDefaultGitDiffOptions();
+
+    explicit Repository(Local<String> path);
+    ~Repository();
 };
 
 #endif  // SRC_REPOSITORY_H_
