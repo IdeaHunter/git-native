@@ -71,7 +71,7 @@ gulp.task('lint-fix', function () {
 
 gulp.task('test', function () {
     return gulp.src(config.tests)
-        .pipe(jasmine({ verbose: true }));
+        .pipe(jasmine({ verbose: false }));
 });
 
 gulp.task('rebuild+tests', [ 'rebuild' ], function () {
