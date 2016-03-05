@@ -105,7 +105,7 @@ describe('git', function () {
     describe('.getHead()', function () {
         describe('when a branch is checked out', function () {
             it('returns the branch\'s full path', function (done) {
-                let dir = path.join(__dirname, 'fixtures/master.git');
+                let dir = 'fixtures/master.git';
                 git.open(dir).then(function (repo) {
                     expect(repo.getHead()).toBe('refs/heads/master');
                     done();
@@ -114,7 +114,7 @@ describe('git', function () {
         });
         describe('when the HEAD is detached', function () {
             it('return the SHA-1 that is checked out', function (done) {
-                let dir = path.join(__dirname, 'fixtures/detached.git');
+                let dir = 'fixtures/detached.git';
                 git.open(dir).then(function (repo) {
                     expect(repo.getHead()).toBe('50719ab369dcbbc2fb3b7a0167c52accbd0eb40e');
                     done();
@@ -129,8 +129,8 @@ describe('git', function () {
         beforeEach(function () {
             ignoreRepoRoot = temp.mkdirSync('ignore-dir');
             ignoreRepoDir = path.join(ignoreRepoRoot, 'ignored');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/ignored-workspace/'), ignoreRepoDir);
-            return wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/ignored.git'), path.join(ignoreRepoDir, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/ignored-workspace/', ignoreRepoDir);
+            return wrench.copyDirSyncRecursive('fixtures/ignored.git', path.join(ignoreRepoDir, '.git'));
         });
         afterEach(function () {
             return wrench.rmdirSyncRecursive(ignoreRepoRoot);
@@ -164,7 +164,7 @@ describe('git', function () {
         });
     });
     describe('.isSubmodule(path)', function () {
-        let submodulePath = path.join(__dirname, 'fixtures/submodule.git');
+        let submodulePath = 'fixtures/submodule.git';
         describe('when the path is undefined', function () {
             it('return false', function (done) {
                 git.open(submodulePath).then(function (repo) {
@@ -192,7 +192,7 @@ describe('git', function () {
     });
     describe('.getConfigValue(key)', function () {
         it('returns the value for the key', function (done) {
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 expect(repo.getConfigValue('core.repositoryformatversion')).toBe('0');
                 expect(repo.getConfigValue('core.ignorecase')).toBe('true');
@@ -205,7 +205,7 @@ describe('git', function () {
         let repoDirectory;
         beforeEach(function () {
             repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             return repoDirectory;
         });
         it('sets the key to the value in the config', function (done) {
@@ -225,7 +225,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/references.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/references.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 expect(repo.getHead()).toBe('refs/heads/master');
@@ -283,7 +283,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             let repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 expect(repo.getHead()).toBe('refs/heads/master');
@@ -313,7 +313,7 @@ describe('git', function () {
                 remotes: [ 'refs/remotes/origin/getHeadOriginal', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master', 'refs/remotes/upstream/HEAD', 'refs/remotes/upstream/master' ],
                 tags: [ 'refs/tags/v1.0', 'refs/tags/v2.0' ]
             };
-            let refPath = path.join(__dirname, 'fixtures/references.git');
+            let refPath = 'fixtures/references.git';
             git.open(refPath).then(function (repo) {
                 expect(repo.getReferences()).toEqual(referencesObj);
                 done();
@@ -322,7 +322,7 @@ describe('git', function () {
     });
     describe('.getReferenceTarget(branch)', function () {
         it('returns the SHA-1 for a reference', function (done) {
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 expect(repo.getReferenceTarget('HEAD2')).toBe(null);
                 expect(repo.getReferenceTarget('HEAD')).toBe('b2c96bdffe1a8f239c2d450863e4a6caa6dcb655');
@@ -335,7 +335,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             let repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 done();
@@ -375,7 +375,7 @@ describe('git', function () {
             it('returns that no lines were added and deleted', function (done) {
                 let repoDirectory;
                 repoDirectory = temp.mkdirSync('node-git-repo-');
-                wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+                wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
                 git.open(repoDirectory).then(function (innerRepo) {
                     fs.unlinkSync(path.join(repoDirectory, '.git/HEAD'));
                     expect(innerRepo.getDiffStats('b.txt')).toEqual({
@@ -392,7 +392,7 @@ describe('git', function () {
         beforeEach(function (done) {
             let repoDirectory;
             repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 done();
@@ -422,7 +422,7 @@ describe('git', function () {
         let repoDirectory;
         beforeEach(function (done) {
             repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 done();
@@ -460,7 +460,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             let repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 let newFilePath = path.join(repo.getWorkingDirectory(), 'b.txt');
@@ -491,7 +491,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             let repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 let newDir = path.join(repo.getWorkingDirectory(), 'secret-stuff');
@@ -533,7 +533,7 @@ describe('git', function () {
     });
     describe('.getLineDiffs(path, text, options)', function () {
         it('returns all hunks that differ', function (done) {
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 let diffs = repo.getLineDiffs('a.txt', 'first line is different');
                 expect(diffs.length).toBe(1);
@@ -557,7 +557,7 @@ describe('git', function () {
             }, done.fail);
         });
         it('returns null for paths that don\'t exist', function (done) {
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 let diffs = repo.getLineDiffs('i-dont-exists.txt', 'content');
                 expect(diffs).toBeNull();
@@ -566,7 +566,7 @@ describe('git', function () {
         });
         describe('ignoreEolWhitespace option', function () {
             it('ignores eol of line whitespace changes', function (done) {
-                let wsPath = path.join(__dirname, 'fixtures/whitespace.git');
+                let wsPath = 'fixtures/whitespace.git';
                 git.open(wsPath).then(function (repo) {
                     let diffs = repo.getLineDiffs('file.txt', 'first\r\nsecond\r\nthird\r\n', {
                         ignoreEolWhitespace: false
@@ -583,7 +583,7 @@ describe('git', function () {
         describe('useIndex options', function () {
             it('uses the index version instead of the HEAD version for diffs', function (done) {
                 let repoDirectory = temp.mkdirSync('node-git-repo-');
-                wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+                wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
                 git.open(repoDirectory).then(function (repo) {
                     let diffs = repo.getLineDiffs('a.txt', 'first line is different', {
                         useIndex: true
@@ -615,7 +615,7 @@ describe('git', function () {
                 return diff.oldLineNumber === -1 && diff.newLineNumber >= 0;
             };
 
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 let diffs = repo.getLineDiffDetails('a.txt', 'first line is different');
                 expect(diffs.length).toBe(3);
@@ -635,7 +635,7 @@ describe('git', function () {
             }, done.fail);
         });
         it('returns null for paths that don\'t exist', function (done) {
-            let masterPath = path.join(__dirname, 'fixtures/master.git');
+            let masterPath = 'fixtures/master.git';
             git.open(masterPath).then(function (repo) {
                 let diffs = repo.getLineDiffDetails('i-dont-exists.txt', 'content');
                 expect(diffs).toBeNull();
@@ -644,7 +644,7 @@ describe('git', function () {
         });
         describe('ignoreEolWhitespace option', function () {
             it('ignores eol of line whitespace changes', function (done) {
-                let wsPath = path.join(__dirname, 'fixtures/whitespace.git');
+                let wsPath = 'fixtures/whitespace.git';
                 git.open(wsPath).then(function (repo) {
                     let diffs = repo.getLineDiffDetails('file.txt', 'first\r\nsecond\r\nthird\r\n', {
                         ignoreEolWhitespace: false
@@ -661,7 +661,7 @@ describe('git', function () {
         describe('useIndex options', function () {
             it('uses the index version instead of the HEAD version for diffs', function (done) {
                 let repoDirectory = temp.mkdirSync('node-git-repo-');
-                wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+                wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
 
                 git.open(repoDirectory).then(function (repo) {
                     let diffs = repo.getLineDiffDetails('a.txt', 'first line is different', {
@@ -689,7 +689,7 @@ describe('git', function () {
         let repo;
         beforeEach(function (done) {
             let repoDirectory = temp.mkdirSync('node-git-repo-');
-            wrench.copyDirSyncRecursive(path.join(__dirname, 'fixtures/master.git'), path.join(repoDirectory, '.git'));
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(repoDirectory, '.git'));
             git.open(repoDirectory).then(function (res) {
                 repo = res;
                 let filePath = path.join(repoDirectory, 'toadd.txt');
