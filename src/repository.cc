@@ -71,38 +71,62 @@ void Repository::Init(Local<Object> exports) {
 
   exports->Set(Nan::New<String>("open").ToLocalChecked(),
     Nan::New<FunctionTemplate>(Repository::Open)->GetFunction());
+  exports->Set(Nan::New<String>("clone").ToLocalChecked(),
+    Nan::New<FunctionTemplate>(Repository::Clone)->GetFunction());
   constructor.Reset(newTemplate->GetFunction());
 }
 
 NODE_MODULE(git, Repository::Init);
 
+v8::Local<v8::Value> Repository::ToRepository(git_repository* res) {
+  auto cons = Nan::New(Repository::constructor);
+  auto instance = Nan::NewInstance(cons, 0, {}).ToLocalChecked();
+  auto obj = Nan::ObjectWrap::Unwrap<Repository>(instance);
+
+  obj->repository = res;
+
+  return instance;
+}
+
 NAN_METHOD(Repository::Open) {
-  std::string repositoryPath(*String::Utf8Value(info[0]));
-  Work<void> res = [repositoryPath](void **val) {
-    git_repository* repository;
+  std::string path(*String::Utf8Value(info[0]));
+
+  Work<git_repository> res = [path](git_repository **repo) {
     if (git_repository_open_ext(
-        &repository, repositoryPath.c_str(), 0, NULL) != GIT_OK)
+        repo, path.c_str(), 0, NULL) != GIT_OK)
       return false;
-      *val = repository;
 
     return true;
   };
 
-  ToResult<void> createResult = [](void *res) {
-    auto cons = Nan::New(Repository::constructor);
-    auto instance = Nan::NewInstance(cons, 0, {}).ToLocalChecked();
-    auto obj = ObjectWrap::Unwrap<Repository>(instance);
-    obj->repository = static_cast<git_repository*>(res);
-
-    return instance;
-  };
   RunAsync(
-    createResult,
+    ToRepository,
     &info,
     res,
     GITERR_REPOSITORY,
     "Could not open repository");
 }
+
+NAN_METHOD(Repository::Clone) {
+  std::string url(*String::Utf8Value(info[0]));
+  std::string path(*String::Utf8Value(info[1]));
+
+  Work<git_repository> res = [url, path](git_repository **repo) {
+    git_clone_options options = GIT_CLONE_OPTIONS_INIT;
+    if (git_clone(repo, url.c_str(), path.c_str(), &options) != GIT_OK)
+      return false;
+
+    return true;
+  };
+
+  RunAsync(
+    ToRepository,
+    &info,
+    res,
+    GITERR_REPOSITORY,
+    "Could not open repository");
+}
+
 
 NAN_METHOD(Repository::New) {
   Nan::HandleScope scope;

@@ -39,6 +39,7 @@ class Repository : public Nan::ObjectWrap {
 
  private:
     static NAN_METHOD(Open);
+    static NAN_METHOD(Clone);
     static NAN_METHOD(New);
     static NAN_METHOD(GetPath);
     static NAN_METHOD(GetWorkingDirectory);
@@ -87,6 +88,7 @@ class Repository : public Nan::ObjectWrap {
     static Local<Value> ConvertStringVectorToV8Array(
             const std::vector<std::string>& vector);
 
+    static Local<Value> ToRepository(git_repository* res);
     static git_repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
 
     static int GetBlob(

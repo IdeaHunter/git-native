@@ -19,7 +19,51 @@ let execCommands = function (commands, callback) {
     return exec(command, callback);
 };
 
+let tmp = function () {
+    return temp.mkdirSync('node-git-tmp-');
+};
+
+let valitGitRepo = 'git://github.com/IdeaHunter/test';
+let invalidGitRepo = 'git://github.com/IdeaHunter/notexists';
+let notExistingPath = '/tmp/path/does/not/exist';
+let invalidPath = '/tmp/notvalid/path?{}[]';
+
 describe('git', function () {
+    describe('.clone(url,path)', function () {
+        describe('when url valid', function () {
+            describe('and path is valid and not exists', function () {
+                let tmpPath = tmp();
+                let repo = git.clone(valitGitRepo, tmpPath);
+                it('would return a promise', function () {
+                    expect(repo instanceof Promise).toBe(true);
+                });
+                it('would resolve the promise', function (done) {
+                    repo.then(done, done.fail);
+                });
+                it('would checkout file', function () {
+                    expect(fs.isFileSync(path.join(tmpPath, 'README.md'))).toBe(true);
+                });
+            });
+            describe('and path is invalid', function () {
+                let repo = git.clone(valitGitRepo, invalidPath);
+                it('would return a promise', function () {
+                    expect(repo instanceof Promise).toBe(true);
+                });
+                it('would reject the promise', function (done) {
+                    repo.then(done.fail, done);
+                });
+            });
+        });
+        describe('when url invalid', function () {
+            let repo = git.clone(invalidGitRepo, tmp());
+            it('would return a promise', function () {
+                expect(repo instanceof Promise).toBe(true);
+            });
+            it('would reject the promise', function (done) {
+                repo.then(done.fail, done);
+            });
+        });
+    });
     describe('.open(path)', function () {
         describe('when the path is a repository', function () {
             it('returns a promise', function () {
@@ -30,7 +74,6 @@ describe('git', function () {
             });
         });
         describe('when the path isn\'t a repository', function () {
-            let notExistingPath = '/tmp/path/does/not/exist';
             it('returns a promse', function () {
                 expect(git.open(notExistingPath) instanceof Promise).toBe(true);
             });
