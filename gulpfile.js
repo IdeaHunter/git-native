@@ -82,5 +82,5 @@ gulp.task('lint', [ 'eslint', 'cpplint' ]);
 
 gulp.task('develop', [ 'rebuild+tests' ], function () {
     gulp.watch([ 'build/*/git.node', config.tests ], [ 'spawn-tests' ]);
-    gulp.watch([ 'binding.gyp', 'src/**/*.+(cc|h)' ], [ 'rebuild' ]);
+    gulp.watch([ 'binding.gyp', 'src/**/*.+(cc|h)', 'deps/**/*' ], [ 'rebuild' ]);
 });

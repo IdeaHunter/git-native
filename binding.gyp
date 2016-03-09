@@ -458,6 +458,11 @@
         ],
       },
       'conditions': [
+        ['OS=="linux"', {
+          'cflags': [
+            '-fvisibility=hidden',
+          ],
+        }],
         ['OS=="win"', {
           'msvs_disabled_warnings': [
             4244,  # conversion from 'ssize_t' to 'int32_t', possible loss of data

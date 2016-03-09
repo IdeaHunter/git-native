@@ -6,5 +6,3 @@ Nan::Callback* tickKicker =
     new Nan::Callback(
         Nan::New<v8::FunctionTemplate>(DirtyHackToKickEventQueue)
             ->GetFunction());
-
-

@@ -88,20 +88,38 @@ v8::Local<v8::Value> Repository::ToRepository(git_repository* res) {
   return instance;
 }
 
+int OnTransportProgress(const char *str, int len, void *payload) {
+  auto progress = reinterpret_cast<Progress*>(payload);
+  progress->Step("Waiting for server", 1);
+  progress->Message(str, len);
+  return 0;
+}
+
+int OrTransferProgress(const git_transfer_progress *stats, void *payload) {
+  auto progress = reinterpret_cast<Progress*>(payload);
+  if (stats->received_objects != stats->total_objects) {
+    progress->Step("Getting changes from server", 2);
+    progress->ProgressChange(stats->received_objects, stats->total_objects);
+  } else {
+    progress->Step("Unpacking", 3);
+    progress->ProgressChange(stats->indexed_deltas, stats->total_deltas);
+  }
+  return 0;
+}
+
 NAN_METHOD(Repository::Open) {
   std::string path(*String::Utf8Value(info[0]));
 
-  Work<git_repository> res = [path](git_repository **repo) {
-    if (git_repository_open_ext(
-        repo, path.c_str(), 0, NULL) != GIT_OK)
-      return false;
-
-    return true;
-  };
+  Work<git_repository> res =
+    [path](git_repository **repo, Progress *progress) {
+      return git_repository_open_ext(
+          repo, path.c_str(), 0, NULL) == GIT_OK;
+    };
 
   RunAsync(
     ToRepository,
     &info,
+    nullptr,
     res,
     GITERR_REPOSITORY,
     "Could not open repository");
@@ -110,21 +128,24 @@ NAN_METHOD(Repository::Open) {
 NAN_METHOD(Repository::Clone) {
   std::string url(*String::Utf8Value(info[0]));
   std::string path(*String::Utf8Value(info[1]));
+  auto *callback = new Nan::Callback(info[2].As<v8::Function>());
 
-  Work<git_repository> res = [url, path](git_repository **repo) {
-    git_clone_options options = GIT_CLONE_OPTIONS_INIT;
-    if (git_clone(repo, url.c_str(), path.c_str(), &options) != GIT_OK)
-      return false;
-
-    return true;
-  };
+  Work<git_repository> res =
+    [url, path](git_repository **repo, Progress* progress) {
+      git_clone_options options = GIT_CLONE_OPTIONS_INIT;
+      options.fetch_opts.callbacks.sideband_progress = OnTransportProgress;
+      options.fetch_opts.callbacks.transfer_progress = OrTransferProgress;
+      options.fetch_opts.callbacks.payload = progress;
+      return git_clone(repo, url.c_str(), path.c_str(), &options) == GIT_OK;
+    };
 
   RunAsync(
     ToRepository,
     &info,
+    callback,
     res,
     GITERR_REPOSITORY,
-    "Could not open repository");
+    "Could not clone repository");
 }
 
 

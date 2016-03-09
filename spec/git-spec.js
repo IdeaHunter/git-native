@@ -23,19 +23,27 @@ let tmp = function () {
     return temp.mkdirSync('node-git-tmp-');
 };
 
-let valitGitRepo = 'git://github.com/IdeaHunter/test';
-let invalidGitRepo = 'git://github.com/IdeaHunter/notexists';
+let valitGitRepo = 'http://localhost:3000/test/test';
+let invalidGitRepo = 'http://localhost:3000/test/not_exists';
 let notExistingPath = '/tmp/path/does/not/exist';
-let invalidPath = '/tmp/notvalid/path?{}[]';
+let invalidPath = `/tmp/\\notvalid/path?{}[]${Math.random()}`;
 
 describe('git', function () {
     describe('.clone(url,path)', function () {
         describe('when url valid', function () {
             describe('and path is valid and not exists', function () {
                 let tmpPath = tmp();
-                let repo = git.clone(valitGitRepo, tmpPath);
+                let progress = jasmine.createSpy('whatAmI');
+                let repo = git.clone(valitGitRepo, tmpPath, progress);
                 it('would return a promise', function () {
                     expect(repo instanceof Promise).toBe(true);
+                });
+
+                it('would call progress at least once', function (done) {
+                    repo.then(function () {
+                        expect(progress).toHaveBeenCalled();
+                        done();
+                    }, done.fail);
                 });
                 it('would resolve the promise', function (done) {
                     repo.then(done, done.fail);
