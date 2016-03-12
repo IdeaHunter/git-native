@@ -50,6 +50,9 @@ gulp.task('cpplint', function () {
             },
             readability: {
                 casting: false
+            },
+            whitespace: {
+                newline: false
             }
         }
     };

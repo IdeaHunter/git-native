@@ -7,14 +7,17 @@
 #include <functional>
 #include <vector>
 
+using namespace std;  // NOLINT(build/namespaces)
+using namespace v8;  // NOLINT(build/namespaces)
+using namespace Nan;  // NOLINT(build/namespaces)
 
 class Progress {
     private:
         const int PROGESS_UNKNOWN = -1;
         uv_mutex_t async_lock;
-        std::vector<std::string*> messages;
-        const Nan::AsyncProgressWorker::ExecutionProgress* nanProgress;
-        std::string lastStepName;
+        vector<string*> messages;
+        const AsyncProgressWorker::ExecutionProgress* nanProgress;
+        string lastStepName;
         int lastStepIdx;
         int step = 0;
         int totalSteps = 1;
@@ -33,20 +36,31 @@ class Progress {
         void Step(const char* name, int stepIdx);
         void Message(const char* message, int len);
         void ProgressChange(int done, int total);
-        v8::Local<v8::Value> ToJsProgress(v8::Isolate *isolate);
+        Local<Value> ToJsProgress(Isolate *isolate);
 
     private:
         void Update();
 };
 
+typedef function<Local<Value>()> GetResult;
+typedef function<GetResult(Progress *progress)>  Work;
+typedef function<GetResult(git_remote *remote)> RemoteAction;
+
+
 template<typename T>
-using Work = std::function<int(Progress *progress, T *res)>;
+struct memfun_type {
+    using type = void;
+};
 
-template<typename T>
-using ToResult = v8::Local<v8::Value> (*)(T* nativeResult);
+template<typename Ret, typename Class, typename... Args>
+struct memfun_type<Ret(Class::*)(Args...) const> {
+    using type = function<Ret(Args...)>;
+};
 
-template<typename T>
-using RemoteAction = bool (*)(git_remote *remote, T *result);
-
-
+template<typename F>
+typename memfun_type<decltype(&F::operator())>::type
+FFL(F const &func) {
+    // Function from lambda !
+    return func;
+}
 #endif  // SRC_COMMON_H_

@@ -81,22 +81,28 @@ void Repository::Init(Local<Object> exports) {
 
 NODE_MODULE(git, Repository::Init);
 
-v8::Local<v8::Value> Repository::ToRepository(git_repository** res) {
+v8::Local<v8::Value> ToRepository(git_repository* res) {
   auto cons = Nan::New(Repository::constructor);
   auto instance = Nan::NewInstance(cons, 0, {}).ToLocalChecked();
   auto obj = Nan::ObjectWrap::Unwrap<Repository>(instance);
 
-  obj->repository = *res;
+  obj->repository = res;
 
   return instance;
 }
 
-template<typename T>
-v8::Local<v8::Value> Repository::ToUndefined(T res) {
-  return Nan::Undefined();
+
+Local<Value> ConvertStringVectorToV8Array(
+    const std::vector<std::string>& vector) {
+  size_t i = 0, size = vector.size();
+  Local<Object> array = Nan::New<Array>(size);
+  for (i = 0; i < size; i++)
+    array->Set(i, Nan::New<String>(vector[i].c_str()).ToLocalChecked());
+
+  return array;
 }
 
-v8::Local<v8::Value> Repository::ToReferences(std::vector<std::string*> *refs) {
+v8::Local<v8::Value> ToReferences(const std::vector<std::string*> *refs) {
   Local<Object> references = Nan::New<Object>();
   std::vector<std::string> heads, remotes, tags;
 
@@ -124,7 +130,7 @@ v8::Local<v8::Value> Repository::ToReferences(std::vector<std::string*> *refs) {
   return references;
 }
 
-v8::Local<v8::Value> Repository::ToReferences(git_strarray* strarray) {
+v8::Local<v8::Value> ToReferences(git_strarray* strarray) {
   Local<Object> references = Nan::New<Object>();
   std::vector<std::string> heads, remotes, tags;
 
@@ -146,8 +152,7 @@ v8::Local<v8::Value> Repository::ToReferences(git_strarray* strarray) {
   return references;
 }
 
-template<typename T>
-bool Repository::RunOnRemote(RemoteAction<T> action, T *result) {
+GetResult Repository::RunOnRemote(RemoteAction action) {
   git_remote *remote;
   git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
 
@@ -158,7 +163,7 @@ bool Repository::RunOnRemote(RemoteAction<T> action, T *result) {
      != GIT_OK)
     return false;
 
-  bool res = action(remote, result);
+  auto res = action(remote);
   git_remote_free(remote);
 
   return res;
@@ -183,29 +188,34 @@ int OrTransferProgress(const git_transfer_progress *stats, void *payload) {
   return 0;
 }
 
-bool ListRemoteRefs(git_remote *remote, std::vector<std::string*> *refs) {
+GetResult ListRemoteRefs(git_remote *remote) {
   size_t refs_len;
   const git_remote_head **heads;
+  std::vector<std::string*> refs;
 
-  auto res = git_remote_ls(&heads, &refs_len, remote) == GIT_OK;
+  if (git_remote_ls(&heads, &refs_len, remote) != GIT_OK)
+    return (GetResult)nullptr;
+
   for (size_t x = 0; x < refs_len; x++) {
-    refs->push_back(new std::string(heads[x]->name));
+    refs.push_back(new std::string(heads[x]->name));
   }
-
-  return res;
+  return FFL([refs]() { return ToReferences(&refs); });
 }
 
 NAN_METHOD(Repository::Open) {
   std::string path(*String::Utf8Value(info[0]));
 
-  Work<git_repository*> res =
-    [path](Progress *progress, git_repository **repo) {
-      return git_repository_open_ext(
-          repo, path.c_str(), 0, NULL) == GIT_OK;
+  Work res =
+    [path](Progress *progress) {
+      git_repository *repo;
+      if (git_repository_open_ext(
+          &repo, path.c_str(), 0, NULL) != GIT_OK)
+        return (GetResult)nullptr;
+
+      return FFL([repo]() { return ToRepository(repo); });
     };
 
-  RunAsync(
-    ToRepository,
+  GitWorker::RunAsync(
     &info,
     nullptr,
     res,
@@ -218,17 +228,20 @@ NAN_METHOD(Repository::Clone) {
   std::string path(*String::Utf8Value(info[1]));
   auto *callback = new Nan::Callback(info[2].As<v8::Function>());
 
-  Work<git_repository*> res =
-    [url, path](Progress* progress, git_repository **repo) {
+  Work res =
+    [url, path](Progress* progress) {
+      git_repository *repo;
       git_clone_options options = GIT_CLONE_OPTIONS_INIT;
       options.fetch_opts.callbacks.sideband_progress = OnTransportProgress;
       options.fetch_opts.callbacks.transfer_progress = OrTransferProgress;
       options.fetch_opts.callbacks.payload = progress;
-      return git_clone(repo, url.c_str(), path.c_str(), &options) == GIT_OK;
+      if (git_clone(&repo, url.c_str(), path.c_str(), &options) != GIT_OK)
+        return (GetResult)nullptr;
+
+      return FFL([repo]() { return ToRepository(repo); });
     };
 
-  RunAsync(
-    ToRepository,
+  GitWorker::RunAsync(
     &info,
     callback,
     res,
@@ -240,13 +253,12 @@ NAN_METHOD(Repository::Fetch) {
   auto repo = GetRepository(info);
   std::string branch(*String::Utf8Value(info[0]));
 
-  Work<void*> res =
-    [repo, branch](Progress* progress, void *repo) {
-      return true;
+  Work res =
+    [repo, branch](Progress* progress) {
+      return FFL([]() { return Nan::Undefined(); });
     };
 
-  RunAsync(
-    ToUndefined,
+  GitWorker::RunAsync(
     &info,
     nullptr,
     res,
@@ -999,16 +1011,6 @@ NAN_METHOD(Repository::GetLineDiffDetails) {
   }
 }
 
-Local<Value> Repository::ConvertStringVectorToV8Array(
-    const std::vector<std::string>& vector) {
-  size_t i = 0, size = vector.size();
-  Local<Object> array = Nan::New<Array>(size);
-  for (i = 0; i < size; i++)
-    array->Set(i, Nan::New<String>(vector[i].c_str()).ToLocalChecked());
-
-  return array;
-}
-
 NAN_METHOD(Repository::GetReferences) {
   Nan::HandleScope scope;
 
@@ -1142,13 +1144,12 @@ NAN_METHOD(Repository::GetRemoteReferences) {
 
   auto repo = GetRepository(info);
 
-  Work<std::vector<std::string*>> work =
-    [repo](Progress* progress, std::vector<std::string*> *refs) {
-      return repo->RunOnRemote(ListRemoteRefs, refs);
+  Work work =
+    [repo](Progress* progress) {
+      return repo->RunOnRemote(ListRemoteRefs);
     };
 
-  RunAsync(
-    ToReferences,
+  GitWorker::RunAsync(
     &info,
     nullptr,
     work,

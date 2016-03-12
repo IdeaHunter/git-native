@@ -36,6 +36,7 @@ using namespace v8;  // NOLINT
 class Repository : public Nan::ObjectWrap {
  public:
     static void Init(Local<Object> target);
+    static Nan::Persistent<v8::Function> constructor;
     git_repository* repository;
 
  private:
@@ -70,7 +71,6 @@ class Repository : public Nan::ObjectWrap {
     static NAN_METHOD(CheckoutReference);
     static NAN_METHOD(Add);
 
-    static Nan::Persistent<v8::Function> constructor;
 
     static int StatusCallback(const char *path, unsigned int status,
                                                         void *payload);
@@ -88,14 +88,8 @@ class Repository : public Nan::ObjectWrap {
     static int SubmoduleCallback(git_submodule *submodule, const char *name,
                                                              void *payload);
 
-    static Local<Value> ConvertStringVectorToV8Array(
-            const std::vector<std::string>& vector);
 
-    template<typename T>
-    static Local<Value> ToUndefined(T res);
-    static Local<Value> ToRepository(git_repository** res);
-    static Local<Value> ToReferences(git_strarray* strarray);
-    static Local<Value> ToReferences(std::vector<std::string*>* refs);
+
 
     static git_repository* GetGitRepository(Nan::NAN_METHOD_ARGS_TYPE args);
     static Repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
@@ -106,8 +100,7 @@ class Repository : public Nan::ObjectWrap {
 
     static git_diff_options CreateDefaultGitDiffOptions();
 
-    template<typename T>
-    bool RunOnRemote(RemoteAction<T> action, T *result);
+    GetResult RunOnRemote(RemoteAction action);
 
     explicit Repository(Local<String> path);
     ~Repository();
