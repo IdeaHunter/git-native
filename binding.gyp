@@ -9,7 +9,8 @@
       'include_dirs': [ '<!(node -e "require(\'nan\')")' ],
       'sources': [
         'src/repository.cc',
-        'src/git-worker.cc'
+        'src/git-worker.cc',
+        'src/common.cc'
       ],
       'cflags': ['-fexceptions'],
       'cflags_cc': ['-fexceptions'],
@@ -48,6 +49,7 @@
         'zlib',
         'http_parser',
       ],
+      'cflags': ['-D GIT_OPENSSL'],
       'sources': [
         'deps/libgit2/src/annotated_commit.c',
         'deps/libgit2/src/annotated_commit.h',

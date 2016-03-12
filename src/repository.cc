@@ -22,6 +22,7 @@
 #include <string.h>
 #include <utility>
 #include <map>
+#include <vector>
 
 #include "./repository.h"
 #include "./git-worker.h"
@@ -42,6 +43,7 @@ void Repository::Init(Local<Object> exports) {
   Nan::SetMethod(newTemplate, "open", Repository::Open);
 
   Nan::SetMethod(proto, "getPath", Repository::GetPath);
+  Nan::SetMethod(proto, "fetch", Repository::Fetch);
   Nan::SetMethod(proto, "getWorkingDirectory",
                   Repository::GetWorkingDirectory);
   Nan::SetMethod(proto, "exists", Repository::Exists);
@@ -66,6 +68,7 @@ void Repository::Init(Local<Object> exports) {
   Nan::SetMethod(proto, "getLineDiffs", Repository::GetLineDiffs);
   Nan::SetMethod(proto, "getLineDiffDetails", Repository::GetLineDiffDetails);
   Nan::SetMethod(proto, "getReferences", Repository::GetReferences);
+  Nan::SetMethod(proto, "getRemoteReferences", Repository::GetRemoteReferences);
   Nan::SetMethod(proto, "checkoutReference", Repository::CheckoutReference);
   Nan::SetMethod(proto, "add", Repository::Add);
 
@@ -78,14 +81,87 @@ void Repository::Init(Local<Object> exports) {
 
 NODE_MODULE(git, Repository::Init);
 
-v8::Local<v8::Value> Repository::ToRepository(git_repository* res) {
+v8::Local<v8::Value> Repository::ToRepository(git_repository** res) {
   auto cons = Nan::New(Repository::constructor);
   auto instance = Nan::NewInstance(cons, 0, {}).ToLocalChecked();
   auto obj = Nan::ObjectWrap::Unwrap<Repository>(instance);
 
-  obj->repository = res;
+  obj->repository = *res;
 
   return instance;
+}
+
+template<typename T>
+v8::Local<v8::Value> Repository::ToUndefined(T res) {
+  return Nan::Undefined();
+}
+
+v8::Local<v8::Value> Repository::ToReferences(std::vector<std::string*> *refs) {
+  Local<Object> references = Nan::New<Object>();
+  std::vector<std::string> heads, remotes, tags;
+
+  for (size_t i = 0; i < refs->size(); i++) {
+    auto str = refs->at(i);
+    auto name = str->c_str();
+
+    if (strncmp(name, "refs/heads/", 11) == 0)
+      heads.push_back(name);
+    else if (strncmp(name, "refs/remotes/", 13) == 0)
+      remotes.push_back(name);
+    else if (strncmp(name, "refs/tags/", 10) == 0)
+      tags.push_back(name);
+
+    delete str;
+  }
+
+  references->Set(Nan::New<String>("heads").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(heads));
+  references->Set(Nan::New<String>("remotes").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(remotes));
+  references->Set(Nan::New<String>("tags").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(tags));
+
+  return references;
+}
+
+v8::Local<v8::Value> Repository::ToReferences(git_strarray* strarray) {
+  Local<Object> references = Nan::New<Object>();
+  std::vector<std::string> heads, remotes, tags;
+
+  for (unsigned int i = 0; i < strarray->count; i++)
+    if (strncmp(strarray->strings[i], "refs/heads/", 11) == 0)
+      heads.push_back(strarray->strings[i]);
+    else if (strncmp(strarray->strings[i], "refs/remotes/", 13) == 0)
+      remotes.push_back(strarray->strings[i]);
+    else if (strncmp(strarray->strings[i], "refs/tags/", 10) == 0)
+      tags.push_back(strarray->strings[i]);
+
+  references->Set(Nan::New<String>("heads").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(heads));
+  references->Set(Nan::New<String>("remotes").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(remotes));
+  references->Set(Nan::New<String>("tags").ToLocalChecked(),
+                    ConvertStringVectorToV8Array(tags));
+
+  return references;
+}
+
+template<typename T>
+bool Repository::RunOnRemote(RemoteAction<T> action, T *result) {
+  git_remote *remote;
+  git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
+
+  if (git_remote_lookup(&remote, repository, "origin") != GIT_OK)
+    return false;
+
+  if (git_remote_connect(remote, GIT_DIRECTION_FETCH, &callbacks, NULL)
+     != GIT_OK)
+    return false;
+
+  bool res = action(remote, result);
+  git_remote_free(remote);
+
+  return res;
 }
 
 int OnTransportProgress(const char *str, int len, void *payload) {
@@ -107,11 +183,23 @@ int OrTransferProgress(const git_transfer_progress *stats, void *payload) {
   return 0;
 }
 
+bool ListRemoteRefs(git_remote *remote, std::vector<std::string*> *refs) {
+  size_t refs_len;
+  const git_remote_head **heads;
+
+  auto res = git_remote_ls(&heads, &refs_len, remote) == GIT_OK;
+  for (size_t x = 0; x < refs_len; x++) {
+    refs->push_back(new std::string(heads[x]->name));
+  }
+
+  return res;
+}
+
 NAN_METHOD(Repository::Open) {
   std::string path(*String::Utf8Value(info[0]));
 
-  Work<git_repository> res =
-    [path](git_repository **repo, Progress *progress) {
+  Work<git_repository*> res =
+    [path](Progress *progress, git_repository **repo) {
       return git_repository_open_ext(
           repo, path.c_str(), 0, NULL) == GIT_OK;
     };
@@ -130,8 +218,8 @@ NAN_METHOD(Repository::Clone) {
   std::string path(*String::Utf8Value(info[1]));
   auto *callback = new Nan::Callback(info[2].As<v8::Function>());
 
-  Work<git_repository> res =
-    [url, path](git_repository **repo, Progress* progress) {
+  Work<git_repository*> res =
+    [url, path](Progress* progress, git_repository **repo) {
       git_clone_options options = GIT_CLONE_OPTIONS_INIT;
       options.fetch_opts.callbacks.sideband_progress = OnTransportProgress;
       options.fetch_opts.callbacks.transfer_progress = OrTransferProgress;
@@ -148,6 +236,23 @@ NAN_METHOD(Repository::Clone) {
     "Could not clone repository");
 }
 
+NAN_METHOD(Repository::Fetch) {
+  auto repo = GetRepository(info);
+  std::string branch(*String::Utf8Value(info[0]));
+
+  Work<void*> res =
+    [repo, branch](Progress* progress, void *repo) {
+      return true;
+    };
+
+  RunAsync(
+    ToUndefined,
+    &info,
+    nullptr,
+    res,
+    GITERR_REPOSITORY,
+    "Could not clone repository");
+}
 
 NAN_METHOD(Repository::New) {
   Nan::HandleScope scope;
@@ -156,7 +261,10 @@ NAN_METHOD(Repository::New) {
   info.GetReturnValue().SetUndefined();
 }
 
-git_repository* Repository::GetRepository(Nan::NAN_METHOD_ARGS_TYPE args) {
+Repository* Repository::GetRepository(Nan::NAN_METHOD_ARGS_TYPE args) {
+  return Nan::ObjectWrap::Unwrap<Repository>(args.This());
+}
+git_repository* Repository::GetGitRepository(Nan::NAN_METHOD_ARGS_TYPE args) {
   return Nan::ObjectWrap::Unwrap<Repository>(args.This())->repository;
 }
 
@@ -236,12 +344,12 @@ git_diff_options Repository::CreateDefaultGitDiffOptions() {
 NAN_METHOD(Repository::Exists) {
   Nan::HandleScope scope;
 
-  info.GetReturnValue().Set(Nan::New<Boolean>(GetRepository(info) != NULL));
+  info.GetReturnValue().Set(Nan::New<Boolean>(GetGitRepository(info) != NULL));
 }
 
 NAN_METHOD(Repository::GetPath) {
   Nan::HandleScope scope;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   const char* path = git_repository_path(repository);
 
   info.GetReturnValue().Set(Nan::New<String>(path).ToLocalChecked());
@@ -249,14 +357,14 @@ NAN_METHOD(Repository::GetPath) {
 
 NAN_METHOD(Repository::GetWorkingDirectory) {
   Nan::HandleScope scope;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   const char* path = git_repository_workdir(repository);
   info.GetReturnValue().Set(Nan::New<String>(path).ToLocalChecked());
 }
 
 NAN_METHOD(Repository::GetSubmodulePaths) {
   Nan::HandleScope scope;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   std::vector<std::string> paths;
   git_submodule_foreach(repository, SubmoduleCallback, &paths);
   Local<Object> v8Paths = Nan::New<Array>(paths.size());
@@ -267,7 +375,7 @@ NAN_METHOD(Repository::GetSubmodulePaths) {
 
 NAN_METHOD(Repository::GetHead) {
   Nan::HandleScope scope;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   git_reference* head;
   if (git_repository_head(&head, repository) != GIT_OK)
     return info.GetReturnValue().Set(Nan::Null());
@@ -291,7 +399,7 @@ NAN_METHOD(Repository::GetHead) {
 
 NAN_METHOD(Repository::RefreshIndex) {
   Nan::HandleScope scope;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   git_index* index;
   if (git_repository_index(&index, repository) == GIT_OK) {
     git_index_read(index, 0);
@@ -305,7 +413,7 @@ NAN_METHOD(Repository::IsIgnored) {
   if (info.Length() < 1)
     return info.GetReturnValue().Set(Nan::New<Boolean>(false));
 
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   std::string path(*String::Utf8Value(info[0]));
   int ignored;
   if (git_ignore_path_is_ignored(&ignored,
@@ -322,7 +430,7 @@ NAN_METHOD(Repository::IsSubmodule) {
     return info.GetReturnValue().Set(Nan::New<Boolean>(false));
 
   git_index* index;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   if (git_repository_index(&index, repository) == GIT_OK) {
     std::string path(*String::Utf8Value(info[0]));
     const git_index_entry* entry = git_index_get_bypath(index, path.c_str(), 0);
@@ -341,7 +449,7 @@ NAN_METHOD(Repository::GetConfigValue) {
     return info.GetReturnValue().Set(Nan::Null());
 
   git_config* config;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   if (git_repository_config_snapshot(&config, repository) != GIT_OK)
     return info.GetReturnValue().Set(Nan::Null());
 
@@ -364,7 +472,7 @@ NAN_METHOD(Repository::SetConfigValue) {
     return info.GetReturnValue().Set(Nan::New<Boolean>(false));
 
   git_config* config;
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   if (git_repository_config(&config, repository) != GIT_OK)
     return info.GetReturnValue().Set(Nan::New<Boolean>(false));
 
@@ -386,7 +494,7 @@ NAN_METHOD(Repository::GetStatus) {
     git_status_options options = GIT_STATUS_OPTIONS_INIT;
     options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
                     GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS;
-    if (git_status_foreach_ext(GetRepository(info),
+    if (git_status_foreach_ext(GetGitRepository(info),
                                &options,
                                StatusCallback,
                                &statuses) == GIT_OK) {
@@ -397,7 +505,7 @@ NAN_METHOD(Repository::GetStatus) {
     }
     return info.GetReturnValue().Set(result);
   } else {
-    git_repository* repository = GetRepository(info);
+    git_repository* repository = GetGitRepository(info);
     std::string path(*String::Utf8Value(info[0]));
     unsigned int status = 0;
     if (git_status_file(&status, repository, path.c_str()) == GIT_OK)
@@ -438,7 +546,7 @@ NAN_METHOD(Repository::GetStatusForPaths) {
   pathsArray.strings = paths;
   options.pathspec = pathsArray;
 
-  if (git_status_foreach_ext(GetRepository(info),
+  if (git_status_foreach_ext(GetGitRepository(info),
                              &options,
                              StatusCallback,
                              &statuses) == GIT_OK) {
@@ -471,7 +579,7 @@ NAN_METHOD(Repository::CheckoutHead) {
   paths.strings = &path;
   options.paths = paths;
 
-  int result = git_checkout_head(GetRepository(info), &options);
+  int result = git_checkout_head(GetGitRepository(info), &options);
   return info.GetReturnValue().Set(Nan::New<Boolean>(result == GIT_OK));
 }
 
@@ -483,7 +591,7 @@ NAN_METHOD(Repository::GetReferenceTarget) {
   std::string refName(*String::Utf8Value(info[0]));
   git_oid sha;
   if (git_reference_name_to_id(
-        &sha, GetRepository(info), refName.c_str()) == GIT_OK) {
+        &sha, GetGitRepository(info), refName.c_str()) == GIT_OK) {
     char oid[GIT_OID_HEXSZ + 1];
     git_oid_tostr(oid, GIT_OID_HEXSZ + 1, &sha);
     return info.GetReturnValue().Set(Nan::New<String>(oid, -1)
@@ -507,7 +615,7 @@ NAN_METHOD(Repository::GetDiffStats) {
   if (info.Length() < 1)
     return info.GetReturnValue().Set(result);
 
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   git_reference* head;
   if (git_repository_head(&head, repository) != GIT_OK)
     return info.GetReturnValue().Set(result);
@@ -588,7 +696,7 @@ NAN_METHOD(Repository::GetHeadBlob) {
 
   std::string path(*String::Utf8Value(info[0]));
 
-  git_repository* repo = GetRepository(info);
+  git_repository* repo = GetGitRepository(info);
   git_reference* head;
   if (git_repository_head(&head, repo) != GIT_OK)
     return info.GetReturnValue().Set(Nan::Null());
@@ -634,7 +742,7 @@ NAN_METHOD(Repository::GetIndexBlob) {
 
   std::string path(*String::Utf8Value(info[0]));
 
-  git_repository* repo = GetRepository(info);
+  git_repository* repo = GetGitRepository(info);
   git_index* index;
   if (git_repository_index(&index, repo) != GIT_OK)
     return info.GetReturnValue().Set(Nan::Null());
@@ -704,7 +812,7 @@ NAN_METHOD(Repository::GetCommitCount) {
     return info.GetReturnValue().Set(Nan::New<Number>(0));
 
   git_revwalk* revWalk;
-  if (git_revwalk_new(&revWalk, GetRepository(info)) != GIT_OK)
+  if (git_revwalk_new(&revWalk, GetGitRepository(info)) != GIT_OK)
     return info.GetReturnValue().Set(Nan::New<Number>(0));
 
   git_revwalk_push(revWalk, &fromCommit);
@@ -734,7 +842,7 @@ NAN_METHOD(Repository::GetMergeBase) {
 
   git_oid mergeBase;
   if (git_merge_base(
-        &mergeBase, GetRepository(info), &commitOne, &commitTwo) == GIT_OK) {
+        &mergeBase, GetGitRepository(info), &commitOne, &commitTwo) == GIT_OK) {
     char mergeBaseId[GIT_OID_HEXSZ + 1];
     git_oid_tostr(mergeBaseId, GIT_OID_HEXSZ + 1, &mergeBase);
     return info.GetReturnValue().Set(Nan::New<String>(mergeBaseId, -1)
@@ -760,7 +868,7 @@ NAN_METHOD(Repository::GetLineDiffs) {
 
   std::string text(*String::Utf8Value(info[1]));
 
-  git_repository* repo = GetRepository(info);
+  git_repository* repo = GetGitRepository(info);
 
   git_blob* blob = NULL;
 
@@ -833,7 +941,7 @@ NAN_METHOD(Repository::GetLineDiffDetails) {
 
   std::string text(*String::Utf8Value(info[1]));
 
-  git_repository* repo = GetRepository(info);
+  git_repository* repo = GetGitRepository(info);
 
   git_blob* blob = NULL;
 
@@ -904,28 +1012,10 @@ Local<Value> Repository::ConvertStringVectorToV8Array(
 NAN_METHOD(Repository::GetReferences) {
   Nan::HandleScope scope;
 
-  Local<Object> references = Nan::New<Object>();
-  std::vector<std::string> heads, remotes, tags;
-
   git_strarray strarray;
-  git_reference_list(&strarray, GetRepository(info));
-
-  for (unsigned int i = 0; i < strarray.count; i++)
-    if (strncmp(strarray.strings[i], "refs/heads/", 11) == 0)
-      heads.push_back(strarray.strings[i]);
-    else if (strncmp(strarray.strings[i], "refs/remotes/", 13) == 0)
-      remotes.push_back(strarray.strings[i]);
-    else if (strncmp(strarray.strings[i], "refs/tags/", 10) == 0)
-      tags.push_back(strarray.strings[i]);
-
+  git_reference_list(&strarray, GetGitRepository(info));
+  auto references = ToReferences(&strarray);
   git_strarray_free(&strarray);
-
-  references->Set(Nan::New<String>("heads").ToLocalChecked(),
-                    ConvertStringVectorToV8Array(heads));
-  references->Set(Nan::New<String>("remotes").ToLocalChecked(),
-                    ConvertStringVectorToV8Array(remotes));
-  references->Set(Nan::New<String>("tags").ToLocalChecked(),
-                    ConvertStringVectorToV8Array(tags));
 
   info.GetReturnValue().Set(references);
 }
@@ -973,7 +1063,7 @@ NAN_METHOD(Repository::CheckoutReference) {
   }
   const char* refName = strRefName.c_str();
 
-  git_repository* repo = GetRepository(info);
+  git_repository* repo = GetGitRepository(info);
 
   if (branch_checkout(repo, refName) == GIT_OK) {
     return info.GetReturnValue().Set(Nan::New<Boolean>(true));
@@ -1014,7 +1104,7 @@ NAN_METHOD(Repository::CheckoutReference) {
 NAN_METHOD(Repository::Add) {
   Nan::HandleScope scope;
 
-  git_repository* repository = GetRepository(info);
+  git_repository* repository = GetGitRepository(info);
   std::string path(*String::Utf8Value(info[0]));
 
   git_index* index;
@@ -1045,6 +1135,25 @@ NAN_METHOD(Repository::Add) {
   }
   git_index_free(index);
   info.GetReturnValue().Set(Nan::New<Boolean>(true));
+}
+
+NAN_METHOD(Repository::GetRemoteReferences) {
+  Nan::HandleScope scope;
+
+  auto repo = GetRepository(info);
+
+  Work<std::vector<std::string*>> work =
+    [repo](Progress* progress, std::vector<std::string*> *refs) {
+      return repo->RunOnRemote(ListRemoteRefs, refs);
+    };
+
+  RunAsync(
+    ToReferences,
+    &info,
+    nullptr,
+    work,
+    GITERR_REPOSITORY,
+    "Could not load list of references from remote repository");
 }
 
 Repository::Repository(Local<String> path) {

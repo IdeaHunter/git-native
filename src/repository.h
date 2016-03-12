@@ -29,6 +29,7 @@
 #include <functional>
 
 #include "./git2.h"
+#include "./common.h"
 
 using namespace v8;  // NOLINT
 
@@ -40,6 +41,7 @@ class Repository : public Nan::ObjectWrap {
  private:
     static NAN_METHOD(Open);
     static NAN_METHOD(Clone);
+    static NAN_METHOD(Fetch);
     static NAN_METHOD(New);
     static NAN_METHOD(GetPath);
     static NAN_METHOD(GetWorkingDirectory);
@@ -64,6 +66,7 @@ class Repository : public Nan::ObjectWrap {
     static NAN_METHOD(GetLineDiffs);
     static NAN_METHOD(GetLineDiffDetails);
     static NAN_METHOD(GetReferences);
+    static NAN_METHOD(GetRemoteReferences);
     static NAN_METHOD(CheckoutReference);
     static NAN_METHOD(Add);
 
@@ -88,14 +91,23 @@ class Repository : public Nan::ObjectWrap {
     static Local<Value> ConvertStringVectorToV8Array(
             const std::vector<std::string>& vector);
 
-    static Local<Value> ToRepository(git_repository* res);
-    static git_repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
+    template<typename T>
+    static Local<Value> ToUndefined(T res);
+    static Local<Value> ToRepository(git_repository** res);
+    static Local<Value> ToReferences(git_strarray* strarray);
+    static Local<Value> ToReferences(std::vector<std::string*>* refs);
+
+    static git_repository* GetGitRepository(Nan::NAN_METHOD_ARGS_TYPE args);
+    static Repository* GetRepository(Nan::NAN_METHOD_ARGS_TYPE args);
 
     static int GetBlob(
         Nan::NAN_METHOD_ARGS_TYPE args,
         git_repository* repo, git_blob*& blob);
 
     static git_diff_options CreateDefaultGitDiffOptions();
+
+    template<typename T>
+    bool RunOnRemote(RemoteAction<T> action, T *result);
 
     explicit Repository(Local<String> path);
     ~Repository();

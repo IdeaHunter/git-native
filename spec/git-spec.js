@@ -72,6 +72,23 @@ describe('git', function () {
             });
         });
     });
+    describe('.fetch(branchName)', function () {
+        let tmpPath = tmp();
+        wrench.copyDirSyncRecursive('fixtures/fetch.git', tmpPath);
+        let fetchResult;
+        beforeAll(function (done) {
+            git.open(tmpPath).then(function (res) {
+                fetchResult = res.fetch('master');
+                done();
+            }, done.fail);
+        });
+        it('return promise', function () {
+            expect(fetchResult instanceof Promise).toBe(true);
+        });
+        it('would resolve promise', function (done) {
+            fetchResult.then(done, done.fail);
+        });
+    });
     describe('.open(path)', function () {
         describe('when the path is a repository', function () {
             it('returns a promise', function () {
@@ -324,6 +341,35 @@ describe('git', function () {
             let refPath = 'fixtures/references.git';
             git.open(refPath).then(function (repo) {
                 expect(repo.getReferences()).toEqual(referencesObj);
+                done();
+            }, done.fail);
+        });
+    });
+    describe('.getRemoteReferences()', function () {
+        let referencesObj = {
+            heads: [ 'refs/heads/development', 'refs/heads/master', 'refs/heads/test' ],
+            remotes: [ ],
+            tags: [ 'refs/tags/v0.1', 'refs/tags/v0.2' ]
+        };
+        let refPath = 'fixtures/remotereferences.git';
+        let remoteRefs;
+        beforeAll(function (done) {
+            git.open(refPath).then(function (repo) {
+                remoteRefs = repo.getRemoteReferences();
+                done();
+            }, done.fail);
+        });
+
+        it('returns a promise', function () {
+            expect(remoteRefs instanceof Promise).toEqual(true);
+        });
+        it('resolves the promise', function (done) {
+            remoteRefs.then(done, done.fail);
+        });
+
+        it('resolves the promise', function (done) {
+            remoteRefs.then(function (refs) {
+                expect(refs).toEqual(referencesObj);
                 done();
             }, done.fail);
         });
