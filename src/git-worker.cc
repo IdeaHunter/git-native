@@ -40,7 +40,7 @@ void GitWorker::HandleProgressCallback(const char *data, size_t size) {
 
 void GitWorker::HandleOKCallback() {
     auto resolver = GetFromPersistent("resolver")
-        .template As<Promise::Resolver>();
+        .As<Promise::Resolver>();
     if (!_val) {;
         resolver->Reject(Nan::New(_error).ToLocalChecked());
     } else {

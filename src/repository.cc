@@ -44,6 +44,7 @@ void Repository::Init(Local<Object> exports) {
 
   Nan::SetMethod(proto, "getPath", Repository::GetPath);
   Nan::SetMethod(proto, "fetch", Repository::Fetch);
+  Nan::SetMethod(proto, "push", Repository::Push);
   Nan::SetMethod(proto, "getWorkingDirectory",
                   Repository::GetWorkingDirectory);
   Nan::SetMethod(proto, "exists", Repository::Exists);
@@ -71,6 +72,7 @@ void Repository::Init(Local<Object> exports) {
   Nan::SetMethod(proto, "getRemoteReferences", Repository::GetRemoteReferences);
   Nan::SetMethod(proto, "checkoutReference", Repository::CheckoutReference);
   Nan::SetMethod(proto, "add", Repository::Add);
+  Nan::SetMethod(proto, "commit", Repository::Commit);
 
   exports->Set(Nan::New<String>("open").ToLocalChecked(),
     Nan::New<FunctionTemplate>(Repository::Open)->GetFunction());
@@ -151,22 +153,34 @@ v8::Local<v8::Value> ToReferences(git_strarray* strarray) {
 
   return references;
 }
-
-GetResult Repository::RunOnRemote(RemoteAction action) {
+template<typename... Args>
+GetResult Repository::RunOnRemote(
+  RemoteAction<Args...> action,
+  const git_remote_callbacks *callbacks,
+  git_direction direction,
+  Args ...params) {
   git_remote *remote;
-  git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
 
   if (git_remote_lookup(&remote, repository, "origin") != GIT_OK)
     return false;
 
-  if (git_remote_connect(remote, GIT_DIRECTION_FETCH, &callbacks, NULL)
+  if (git_remote_connect(remote, direction, callbacks, NULL)
      != GIT_OK)
     return false;
 
-  auto res = action(remote);
+  auto res = action(remote, params...);
   git_remote_free(remote);
 
   return res;
+}
+
+int OnCredentials(git_cred **out, const char *url,
+  const char *username_from_url,
+  unsigned int allowed_types, void *payload) {
+  auto info = reinterpret_cast<GitRemoteCallbacksPayload*>(payload);
+    return git_cred_userpass_plaintext_new(out
+      , info->user.c_str()
+      , info->password.c_str());
 }
 
 int OnTransportProgress(const char *str, int len, void *payload) {
@@ -174,6 +188,13 @@ int OnTransportProgress(const char *str, int len, void *payload) {
   progress->Step("Waiting for server", 1);
   progress->Message(str, len);
   return 0;
+}
+
+const git_oid* OnSingleParentCommit(size_t idx, void *payload) {
+  if (idx != 0)
+    return NULL;
+
+  return reinterpret_cast<git_oid*>(payload);
 }
 
 int OrTransferProgress(const git_transfer_progress *stats, void *payload) {
@@ -200,6 +221,46 @@ GetResult ListRemoteRefs(git_remote *remote) {
     refs.push_back(new std::string(heads[x]->name));
   }
   return FFL([refs]() { return ToReferences(&refs); });
+}
+
+GetResult GitPush(
+    git_remote *remote
+  , const std::string *branch
+  , const git_remote_callbacks *callbacks) {
+  std::string ref("refs/heads/");
+  std::string refPart = ref+ *branch;
+  ref= refPart+":"+refPart;
+  char *specstr[] =  {
+    (char*)ref.c_str()
+  };
+  git_strarray specs = {
+    specstr,
+    1,
+  };
+  git_push_options opts = GIT_PUSH_OPTIONS_INIT;
+  if (callbacks)
+    opts.callbacks = *callbacks;
+
+  if (git_remote_push(remote, &specs, &opts) != GIT_OK)
+    return nullptr;
+
+  return FFL([]() { return Nan::Undefined(); });
+}
+
+GetResult GitFetch(git_remote *remote) {
+  char *specstr[] =   {
+    (char*)"+refs/heads/*:refs/remotes/origin/*",
+    (char*)"refs/tags/*:refs/tags/*",
+    (char*)"+refs/pull/*:refs/pull/*"
+  };
+  git_strarray specs = {
+    specstr,
+    3,
+  };
+  if (git_remote_fetch(remote, &specs, NULL, NULL) != GIT_OK)
+    return nullptr;
+
+  return FFL([]() { return Nan::Undefined(); });
 }
 
 NAN_METHOD(Repository::Open) {
@@ -251,11 +312,11 @@ NAN_METHOD(Repository::Clone) {
 
 NAN_METHOD(Repository::Fetch) {
   auto repo = GetRepository(info);
-  std::string branch(*String::Utf8Value(info[0]));
+  std::string path(*String::Utf8Value(info[1]));
 
   Work res =
-    [repo, branch](Progress* progress) {
-      return FFL([]() { return Nan::Undefined(); });
+    [repo](Progress* progress) {
+      return repo->RunOnRemote(GitFetch, nullptr, GIT_DIRECTION_FETCH);
     };
 
   GitWorker::RunAsync(
@@ -263,7 +324,38 @@ NAN_METHOD(Repository::Fetch) {
     nullptr,
     res,
     GITERR_REPOSITORY,
-    "Could not clone repository");
+    "Could not fetch repository");
+}
+
+NAN_METHOD(Repository::Push) {
+  auto payload = new GitRemoteCallbacksPayload();
+  auto repo = GetRepository(info);
+  std::string branch(*String::Utf8Value(info[0]));
+  if (info.Length() == 2) {
+    auto obj = info[1].As<v8::Object>();
+    auto userObj = obj->Get(Nan::New("user").ToLocalChecked());
+    auto pwdObj = obj->Get(Nan::New("password").ToLocalChecked());
+    payload->user = *String::Utf8Value(userObj);
+    payload->password= *String::Utf8Value(pwdObj);
+  }
+
+  git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
+  callbacks.credentials = OnCredentials;
+  callbacks.payload = payload;
+  Work res =
+    [repo, branch, callbacks, payload](Progress* progress) {
+      auto res = repo->RunOnRemote(GitPush, &callbacks,
+        GIT_DIRECTION_PUSH, &branch, &callbacks);
+      delete payload;
+      return res;
+    };
+
+  GitWorker::RunAsync(
+    &info,
+    nullptr,
+    res,
+    GITERR_REPOSITORY,
+    "Could not push to repository");
 }
 
 NAN_METHOD(Repository::New) {
@@ -1139,6 +1231,54 @@ NAN_METHOD(Repository::Add) {
   info.GetReturnValue().Set(Nan::New<Boolean>(true));
 }
 
+NAN_METHOD(Repository::Commit) {
+  Nan::HandleScope scope;
+
+  git_repository* repo = GetGitRepository(info);
+  std::string message(*String::Utf8Value(info[0]));
+  std::string name(*String::Utf8Value(info[1]));
+  std::string email(*String::Utf8Value(info[2]));
+
+  bool res;
+  git_index *index;
+  git_reference *ref;
+  git_reference *direct_ref;
+  git_object *commitObj;
+  git_signature *s;
+  git_oid treeOid;
+  git_oid resOid;
+
+  if (git_repository_index(&index, repo) != GIT_OK)
+    return Nan::ThrowError("Can't access index");
+
+  if (git_repository_head(&ref, repo) != GIT_OK)
+    return Nan::ThrowError("Head not found");
+
+  if (git_reference_resolve(&direct_ref, ref) != GIT_OK)
+    return Nan::ThrowError("Can't resolve head");
+
+  if (git_reference_peel(&commitObj, direct_ref, GIT_OBJ_COMMIT) != GIT_OK)
+    return Nan::ThrowError("Can't find parent commit");
+
+  auto commitOid = git_object_id(commitObj);
+
+  git_signature_now(&s, name.c_str(), email.c_str());
+
+  git_index_write_tree(&treeOid, index);
+  res = git_commit_create_from_callback(
+      &resOid, repo, "HEAD", s, s,
+      NULL, message.c_str(), &treeOid, OnSingleParentCommit,
+      (void*)commitOid) == GIT_OK;
+
+  git_reference_free(ref);
+  git_signature_free(s);
+  git_object_free(commitObj);
+  git_reference_free(direct_ref);
+  git_index_free(index);
+
+  info.GetReturnValue().Set(Nan::New<Boolean>(res));
+}
+
 NAN_METHOD(Repository::GetRemoteReferences) {
   Nan::HandleScope scope;
 
@@ -1146,7 +1286,7 @@ NAN_METHOD(Repository::GetRemoteReferences) {
 
   Work work =
     [repo](Progress* progress) {
-      return repo->RunOnRemote(ListRemoteRefs);
+      return repo->RunOnRemote(ListRemoteRefs, nullptr, GIT_DIRECTION_FETCH);
     };
 
   GitWorker::RunAsync(

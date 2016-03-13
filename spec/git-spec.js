@@ -19,12 +19,26 @@ let execCommands = function (commands, callback) {
     return exec(command, callback);
 };
 
+let bareToNormal = function (folder, callback) {
+    let commands = [
+        'cd ' + folder,
+        'git config --bool core.bare false',
+        'git reset HEAD --',
+        'git checkout .'
+    ];
+    execCommands(commands, callback);
+};
+let createFile = function (filepath) {
+    fs.closeSync(fs.openSync(filepath, 'w'));
+};
 let tmp = function () {
     return temp.mkdirSync('node-git-tmp-');
 };
 
 let valitGitRepo = 'http://localhost:3000/test/test';
 let invalidGitRepo = 'http://localhost:3000/test/not_exists';
+let validUserName = 'test';
+let validPass = 'git-native';
 let notExistingPath = '/tmp/path/does/not/exist';
 let invalidPath = `/tmp/\\notvalid/path?{}[]${Math.random()}`;
 
@@ -72,21 +86,60 @@ describe('git', function () {
             });
         });
     });
-    describe('.fetch(branchName)', function () {
-        let tmpPath = tmp();
-        wrench.copyDirSyncRecursive('fixtures/fetch.git', tmpPath);
+    describe('.fetch()', function () {
         let fetchResult;
+        let tmpPath = tmp();
+        wrench.copyDirSyncRecursive('fixtures/fetch.git', path.join(tmpPath, '.git'));
         beforeAll(function (done) {
-            git.open(tmpPath).then(function (res) {
-                fetchResult = res.fetch('master');
-                done();
-            }, done.fail);
+            bareToNormal(tmpPath, function () {
+                git.open(tmpPath).then(function (res) {
+                    fetchResult = res.fetch();
+                    done();
+                }, done.fail);
+            });
         });
         it('return promise', function () {
             expect(fetchResult instanceof Promise).toBe(true);
         });
         it('would resolve promise', function (done) {
             fetchResult.then(done, done.fail);
+        });
+        it('would checkout file', function (done) {
+            fetchResult.then(function () {
+                execCommands([ 'cd ' + tmpPath, 'git checkout FETCH_HEAD --' ], function () {
+                    expect(fs.isFileSync(path.join(tmpPath, 'newfile.txt'))).toBe(true);
+                    done();
+                });
+            }, done.fail);
+        });
+    });
+    describe('.push()', function () {
+        let result;
+        let tmpPath = tmp();
+        let opts = {
+            user: validUserName,
+            password: validPass
+        };
+        beforeAll(function (done) {
+            wrench.copyDirSyncRecursive('fixtures/push.git', path.join(tmpPath, '.git'));
+            bareToNormal(tmpPath, function () {
+                let newFile = 'test.txt' + Math.random();
+                createFile(path.join(tmpPath, newFile));
+                execCommands([ 'cd ' + tmpPath, 'git pull' ], function () {
+                    git.open(tmpPath).then(function (res) {
+                        res.add(newFile);
+                        res.commit('test', 'a', 'a@a.com');
+                        result = res.push('master', opts);
+                        done();
+                    }, done.fail);
+                });
+            });
+        });
+        it('return promise', function () {
+            expect(result instanceof Promise).toBe(true);
+        });
+        it('would resolve promise', function (done) {
+            result.then(done, done.fail);
         });
     });
     describe('.open(path)', function () {
@@ -760,6 +813,53 @@ describe('git', function () {
             expect(function () {
                 return repo.add('missing.txt');
             }).toThrow();
+        });
+    });
+    describe('.commit()', function () {
+        let repo;
+        let commitStatus;
+        let tmpPath = tmp();
+        beforeAll(function (done) {
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(tmpPath, '.git'));
+            createFile(path.join(tmpPath, 'test.txt'));
+            bareToNormal(tmpPath, function () {
+                git.open(tmpPath).then(function (res) {
+                    repo = res;
+                    repo.add('test.txt');
+                    commitStatus = repo.commit('test', 'a', 'a@a.com');
+                    done();
+                }, done.fail);
+            });
+        });
+        it('return true', function () {
+            expect(commitStatus).toBe(true);
+        });
+        it('commit the staged file', function () {
+            expect(repo.getStatus('test.txt')).toBe(0);
+        });
+    });
+
+    describe('.commit()', function () {
+        let repo;
+        let commitStatus;
+        let tmpPath = tmp();
+        beforeAll(function (done) {
+            wrench.copyDirSyncRecursive('fixtures/master.git', path.join(tmpPath, '.git'));
+            createFile(path.join(tmpPath, 'test.txt'));
+            bareToNormal(tmpPath, function () {
+                git.open(tmpPath).then(function (res) {
+                    repo = res;
+                    repo.add('test.txt');
+                    commitStatus = repo.commit('test', 'a', 'a@a.com');
+                    done();
+                }, done.fail);
+            });
+        });
+        it('return true', function () {
+            expect(commitStatus).toBe(true);
+        });
+        it('commit the staged file', function () {
+            expect(repo.getStatus('test.txt')).toBe(0);
         });
     });
 });

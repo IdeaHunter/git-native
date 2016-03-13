@@ -23,12 +23,13 @@
 #define SRC_REPOSITORY_H_
 
 #include <nan.h>
+#include <git2.h>
+#include <git2/sys/commit.h>
 
 #include <string>
 #include <vector>
 #include <functional>
 
-#include "./git2.h"
 #include "./common.h"
 
 using namespace v8;  // NOLINT
@@ -43,6 +44,7 @@ class Repository : public Nan::ObjectWrap {
     static NAN_METHOD(Open);
     static NAN_METHOD(Clone);
     static NAN_METHOD(Fetch);
+    static NAN_METHOD(Push);
     static NAN_METHOD(New);
     static NAN_METHOD(GetPath);
     static NAN_METHOD(GetWorkingDirectory);
@@ -70,6 +72,7 @@ class Repository : public Nan::ObjectWrap {
     static NAN_METHOD(GetRemoteReferences);
     static NAN_METHOD(CheckoutReference);
     static NAN_METHOD(Add);
+    static NAN_METHOD(Commit);
 
 
     static int StatusCallback(const char *path, unsigned int status,
@@ -99,11 +102,20 @@ class Repository : public Nan::ObjectWrap {
         git_repository* repo, git_blob*& blob);
 
     static git_diff_options CreateDefaultGitDiffOptions();
-
-    GetResult RunOnRemote(RemoteAction action);
+    template< typename... Args>
+    GetResult RunOnRemote(
+        RemoteAction<Args...> action,
+        const git_remote_callbacks *callbacks,
+        git_direction direction,
+        Args ...params);
 
     explicit Repository(Local<String> path);
     ~Repository();
 };
 
+struct GitRemoteCallbacksPayload {
+    std::string user;
+    std::string password;
+    Progress *progress;
+};
 #endif  // SRC_REPOSITORY_H_

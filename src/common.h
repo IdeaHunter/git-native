@@ -44,7 +44,9 @@ class Progress {
 
 typedef function<Local<Value>()> GetResult;
 typedef function<GetResult(Progress *progress)>  Work;
-typedef function<GetResult(git_remote *remote)> RemoteAction;
+
+template<typename... Args>
+using RemoteAction =  GetResult(*)(git_remote *remote, Args ...params);
 
 
 template<typename T>
